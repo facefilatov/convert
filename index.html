@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Convert">
+<meta name="theme-color" content="#000000">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Convert</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  :root {
+    --bg: #000;
+    --fg: #fff;
+    --g1: rgba(255,255,255,.06);   /* surfaces */
+    --g2: rgba(255,255,255,.11);
+    --g3: rgba(255,255,255,.38);   /* secondary text */
+    --line: rgba(255,255,255,.12);
+    --row: 72px;
+  }
+  html, body {
+    background: var(--bg); color: var(--fg); height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-font-smoothing: antialiased;
+  }
+  body { overflow: hidden; }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+  svg { display: block; }
+  .app { position: relative; height: 100dvh; max-width: 520px; margin: 0 auto; overflow: hidden; }
+  .screen { position: absolute; inset: 0; display: flex; flex-direction: column; }
+  .hidden { display: none !important; }
+
+  /* ── Header ── */
+  .bar {
+    flex: none; display: flex; align-items: center; justify-content: center; position: relative;
+    padding: calc(env(safe-area-inset-top, 0px) + 14px) 20px 14px; min-height: 64px;
+  }
+  .wordmark { display: flex; align-items: center; gap: 10px; font-size: 15px; letter-spacing: 6px; font-weight: 300; }
+  .wordmark b { font-weight: 700; }
+  .title { font-size: 14px; font-weight: 600; letter-spacing: 5px; text-transform: uppercase; text-align: center; }
+  .sub { font-size: 11px; color: var(--g3); letter-spacing: .3px; margin-top: 4px; text-align: center; min-height: 13px; }
+  .back {
+    position: absolute; left: 12px; bottom: 10px; width: 40px; height: 40px; border-radius: 20px;
+    display: grid; place-items: center; background: var(--g1);
+  }
+
+  /* ── Home grid ── */
+  .grid {
+    flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 26px 10px; padding: 18px 22px calc(env(safe-area-inset-bottom, 0px) + 28px); align-content: start;
+  }
+  .cat { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .cat .ic {
+    width: 76px; height: 76px; border-radius: 20px; display: grid; place-items: center;
+    background: var(--g1); border: 1px solid var(--line); transition: transform .12s, background .12s;
+  }
+  .cat:active .ic { transform: scale(.93); background: var(--g2); }
+  .cat span { font-size: 13px; letter-spacing: .2px; color: rgba(255,255,255,.82); }
+
+  /* ── Converter columns ── */
+  .cols { flex: 1; min-height: 0; display: flex; position: relative; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .col { flex: 1; position: relative; min-width: 0; }
+  .col + .col { border-left: 1px solid var(--line); }
+  .list {
+    position: absolute; inset: 0; overflow-y: auto; scroll-snap-type: y mandatory; scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(transparent, #000 22%, #000 78%, transparent);
+            mask-image: linear-gradient(transparent, #000 22%, #000 78%, transparent);
+  }
+  .list::-webkit-scrollbar { display: none; }
+  .item {
+    height: var(--row); scroll-snap-align: center; padding: 12px 14px; display: flex; flex-direction: column;
+    justify-content: space-between; cursor: pointer;
+  }
+  .item .n { font-size: 16px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: rgba(255,255,255,.8); }
+  .item .c { font-size: 12px; color: var(--g3); align-self: flex-end; letter-spacing: .4px; }
+  .band {
+    position: absolute; left: 0; right: 0; height: var(--row); pointer-events: none;
+    padding: 8px 14px 10px; display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .band .v { font-size: 32px; font-weight: 300; text-align: right; white-space: nowrap; overflow: hidden; letter-spacing: -.5px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .band .m { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; letter-spacing: .3px; }
+  .band .m .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .col.from .band { background: var(--fg); color: var(--bg); }
+  .col.to .band { background: #1f1f1f; color: var(--fg); }
+  .col.to .band .m { color: rgba(255,255,255,.6); }
+  .az {
+    position: absolute; top: 10px; z-index: 3; height: 28px; padding: 0 10px; border-radius: 14px;
+    font-size: 11px; font-weight: 600; letter-spacing: 1px; background: rgba(40,40,40,.9);
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border: 1px solid var(--line);
+  }
+  .col.from .az { left: 10px; } .col.to .az { right: 10px; }
+  .empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--g3); font-size: 14px; text-align: center; padding: 20px; }
+
+  /* ── Keypad ── */
+  .pad-wrap { flex: none; position: relative; padding: 10px 10px calc(env(safe-area-inset-bottom, 0px) + 10px); }
+  .pad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .key {
+    height: clamp(50px, 8.6vh, 70px); border-radius: 16px; background: var(--g1);
+    font-size: 28px; font-weight: 300; display: grid; place-items: center; transition: background .08s;
+  }
+  .key:active, .key.down { background: rgba(255,255,255,.22); }
+  .key.op { background: transparent; border: 1px solid var(--line); }
+  .key.op:active { background: var(--g2); }
+  .key small { font-size: 19px; font-weight: 400; letter-spacing: .5px; }
+
+  /* ── Letter wheel ── */
+  .wheel {
+    position: absolute; inset: 0; z-index: 10; background: rgba(0,0,0,.94); touch-action: none;
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  }
+  .wheel .l {
+    position: absolute; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 17px;
+    display: grid; place-items: center; font-size: 17px; font-weight: 500; transition: transform .08s, background .08s;
+  }
+  .wheel .l.off { color: rgba(255,255,255,.2); }
+  .wheel .l.on { background: var(--fg); color: var(--bg); transform: scale(1.25); }
+  .wheel .mid { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); text-align: center; width: 52%; }
+  .wheel .big { font-size: 64px; font-weight: 200; line-height: 1; }
+  .wheel .hint { font-size: 12px; color: var(--g3); margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .toast {
+    position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 24px); transform: translateX(-50%);
+    background: var(--fg); color: var(--bg); font-size: 13px; font-weight: 500; padding: 9px 16px; border-radius: 20px;
+    z-index: 20; opacity: 0; transition: opacity .2s; pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Home -->
+  <section class="screen" id="home">
+    <header class="bar">
+      <div class="wordmark" id="logo"></div>
+    </header>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <!-- Converter -->
+  <section class="screen hidden" id="conv">
+    <header class="bar">
+      <button class="back" id="back" aria-label="Back">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4l-8 8 8 8"/></svg>
+      </button>
+      <div>
+        <div class="title" id="ctitle"></div>
+        <div class="sub" id="csub"></div>
+      </div>
+    </header>
+    <div class="cols" id="cols">
+      <div class="col from" id="colFrom">
+        <div class="list"></div>
+        <div class="band"><div class="v"></div><div class="m"><span class="n"></span><span class="c"></span></div></div>
+        <button class="az" data-side="from">A–Z</button>
+      </div>
+      <div class="col to" id="colTo">
+        <div class="list"></div>
+        <div class="band"><div class="v"></div><div class="m"><span class="n"></span><span class="c"></span></div></div>
+        <button class="az" data-side="to">A–Z</button>
+      </div>
+      <div class="empty hidden" id="empty"></div>
+    </div>
+    <div class="pad-wrap">
+      <div class="pad" id="pad"></div>
+      <div class="wheel hidden" id="wheel"><div class="mid"><div class="big" id="wbig"></div><div class="hint" id="whint">Slide around the ring</div></div></div>
+    </div>
+  </section>
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+/* ───────────────────────── Icons (24-unit line drawings) ───────────────────────── */
+const ICON = {
+  logo:     '<path d="M4 8h14M14 4l4 4-4 4M20 16H6M10 12l-4 4 4 4"/>',
+  area:     '<rect x="4" y="4" width="16" height="16" rx="1.5"/><path d="M4 13l7 7M4 8l12 12M8 4l12 12M13 4l7 7"/>',
+  currency: '<circle cx="12" cy="12" r="8.5"/><path d="M15 9.2c-.5-1-1.6-1.6-3-1.6-1.7 0-2.9.9-2.9 2.2 0 3 6 1.6 6 4.5 0 1.3-1.3 2.2-3.1 2.2-1.5 0-2.7-.6-3.2-1.7M12 6v1.6M12 16.5V18"/>',
+  data:     '<ellipse cx="12" cy="6" rx="7" ry="2.6"/><path d="M5 6v12c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6V6M5 12c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6"/>',
+  fuel:     '<path d="M5 20V5.5A1.5 1.5 0 0 1 6.5 4h6A1.5 1.5 0 0 1 14 5.5V20M3.5 20h12M5 10h9M14 8.5l3 2v6.5a1.5 1.5 0 0 0 3 0V9l-3-3"/>',
+  length:   '<rect x="2.5" y="8" width="19" height="8" rx="1.2"/><path d="M6 8v3M9.5 8v4.5M13 8v3M16.5 8v4.5M20 8v3"/>',
+  power:    '<path d="M13 2.5L5 13.5h6l-1 8 8-11h-6l1-8z"/>',
+  pressure: '<circle cx="12" cy="13" r="8"/><path d="M12 13l4-4M8 5.8L7 4M16 5.8l1-1.8M12 13h.01"/>',
+  speed:    '<path d="M4.2 17.5a8.5 8.5 0 1 1 15.6 0"/><path d="M12 14.5l4.5-4.5M12 14.5h.01M7 7l.9.9M12 5v1.3M17 7l-.9.9"/>',
+  temp:     '<path d="M10 14.2V5a2 2 0 0 1 4 0v9.2a4 4 0 1 1-4 0z"/><path d="M12 17.5v-6"/>',
+  time:     '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/>',
+  volume:   '<path d="M6 3.5h12M7.5 3.5V19a1.5 1.5 0 0 0 1.5 1.5h6a1.5 1.5 0 0 0 1.5-1.5V3.5M7.5 9h3M7.5 13h3M7.5 17h3"/>',
+  weight:   '<path d="M9 7.5a3 3 0 1 1 6 0M6.8 7.5h10.4l2.3 12.5H4.5z"/>'
+};
+const svg = (k, s = 30, w = 1.5) =>
+  `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
+
+/* ───────────────────────── Units ─────────────────────────
+   Each unit: [name, symbol, factor-to-base] — or functions for non-linear scales. */
+const lin = (list) => list.map(([n, c, f]) => ({ n, c, to: v => v * f, from: v => v / f }));
+const CATS = [
+  { id: 'area', name: 'Area', icon: 'area', def: ['Square Meter', 'Square Foot'], units: lin([
+    ['Square Millimeter', 'mm²', 1e-6], ['Square Centimeter', 'cm²', 1e-4], ['Square Meter', 'm²', 1],
+    ['Hectare', 'ha', 1e4], ['Square Kilometer', 'km²', 1e6], ['Square Inch', 'in²', 6.4516e-4],
+    ['Square Foot', 'ft²', 0.09290304], ['Square Yard', 'yd²', 0.83612736], ['Acre', 'ac', 4046.8564224],
+    ['Square Mile', 'mi²', 2589988.110336]]) },
+  { id: 'currency', name: 'Currency', icon: 'currency', def: ['US Dollar', 'Euro'], units: [] },
+  { id: 'data', name: 'Data Storage', icon: 'data', def: ['Gigabyte', 'Megabyte'], units: lin([
+    ['Bit', 'b', 0.125], ['Byte', 'B', 1], ['Kilobit', 'kb', 125], ['Kilobyte', 'KB', 1e3], ['Kibibyte', 'KiB', 1024],
+    ['Megabit', 'Mb', 1.25e5], ['Megabyte', 'MB', 1e6], ['Mebibyte', 'MiB', 1048576], ['Gigabit', 'Gb', 1.25e8],
+    ['Gigabyte', 'GB', 1e9], ['Gibibyte', 'GiB', 1073741824], ['Terabyte', 'TB', 1e12], ['Tebibyte', 'TiB', 1099511627776],
+    ['Petabyte', 'PB', 1e15]]) },
+  { id: 'fuel', name: 'Fuel-Mileage', icon: 'fuel', def: ['Miles per Gallon (US)', 'Liters per 100 km'], units: [
+    ...lin([['Kilometers per Liter', 'km/L', 1], ['Miles per Gallon (US)', 'mpg', 0.425143707],
+            ['Miles per Gallon (UK)', 'mpg UK', 0.354006043], ['Miles per Liter', 'mi/L', 1.609344]]),
+    { n: 'Liters per 100 km', c: 'L/100km', to: v => 100 / v, from: v => 100 / v }] },
+  { id: 'length', name: 'Length', icon: 'length', def: ['Meter', 'Foot'], units: lin([
+    ['Micrometer', 'µm', 1e-6], ['Millimeter', 'mm', 1e-3], ['Centimeter', 'cm', 0.01], ['Meter', 'm', 1],
+    ['Kilometer', 'km', 1e3], ['Inch', 'in', 0.0254], ['Foot', 'ft', 0.3048], ['Yard', 'yd', 0.9144],
+    ['Mile', 'mi', 1609.344], ['Nautical Mile', 'NM', 1852], ['Astronomical Unit', 'au', 1.495978707e11],
+    ['Light Year', 'ly', 9.4607304725808e15]]) },
+  { id: 'power', name: 'Power', icon: 'power', def: ['Horsepower', 'Kilowatt'], units: lin([
+    ['Milliwatt', 'mW', 1e-3], ['Watt', 'W', 1], ['Kilowatt', 'kW', 1e3], ['Megawatt', 'MW', 1e6],
+    ['Horsepower', 'hp', 745.69987158227], ['Metric Horsepower', 'PS', 735.49875], ['BTU per Hour', 'BTU/h', 0.29307107],
+    ['Foot-Pound per Second', 'ft·lbf/s', 1.3558179483314]]) },
+  { id: 'pressure', name: 'Pressure', icon: 'pressure', def: ['Bar', 'PSI'], units: lin([
+    ['Pascal', 'Pa', 1], ['Kilopascal', 'kPa', 1e3], ['Megapascal', 'MPa', 1e6], ['Millibar', 'mbar', 100],
+    ['Bar', 'bar', 1e5], ['Atmosphere', 'atm', 101325], ['PSI', 'psi', 6894.757293168],
+    ['Millimeter of Mercury', 'mmHg', 133.322387415], ['Inch of Mercury', 'inHg', 3386.389], ['Torr', 'Torr', 133.3223684]]) },
+  { id: 'speed', name: 'Speed', icon: 'speed', def: ['Kilometers per Hour', 'Miles per Hour'], units: lin([
+    ['Meters per Second', 'm/s', 1], ['Kilometers per Hour', 'km/h', 1 / 3.6], ['Miles per Hour', 'mph', 0.44704],
+    ['Feet per Second', 'ft/s', 0.3048], ['Knot', 'kn', 1852 / 3600], ['Mach', 'Ma', 343]]) },
+  { id: 'temp', name: 'Temperature', icon: 'temp', def: ['Celsius', 'Fahrenheit'], units: [
+    { n: 'Celsius', c: '°C', to: v => v, from: v => v },
+    { n: 'Fahrenheit', c: '°F', to: v => (v - 32) * 5 / 9, from: v => v * 9 / 5 + 32 },
+    { n: 'Kelvin', c: 'K', to: v => v - 273.15, from: v => v + 273.15 },
+    { n: 'Rankine', c: '°R', to: v => (v - 491.67) * 5 / 9, from: v => (v + 273.15) * 9 / 5 }] },
+  { id: 'time', name: 'Time', icon: 'time', def: ['Hour', 'Minute'], units: lin([
+    ['Nanosecond', 'ns', 1e-9], ['Microsecond', 'µs', 1e-6], ['Millisecond', 'ms', 1e-3], ['Second', 's', 1],
+    ['Minute', 'min', 60], ['Hour', 'h', 3600], ['Day', 'd', 86400], ['Week', 'wk', 604800],
+    ['Month', 'mo', 2629746], ['Year', 'yr', 31556952], ['Decade', 'dec', 315569520], ['Century', 'c', 3155695200]]) },
+  { id: 'volume', name: 'Volume', icon: 'volume', def: ['Liter', 'Gallon (US)'], units: lin([
+    ['Milliliter', 'mL', 1e-3], ['Liter', 'L', 1], ['Cubic Meter', 'm³', 1e3], ['Cubic Centimeter', 'cm³', 1e-3],
+    ['Cubic Inch', 'in³', 0.016387064], ['Cubic Foot', 'ft³', 28.316846592], ['Teaspoon (US)', 'tsp', 0.00492892159375],
+    ['Tablespoon (US)', 'tbsp', 0.01478676478125], ['Fluid Ounce (US)', 'fl oz', 0.0295735295625],
+    ['Cup (US)', 'cup', 0.2365882365], ['Pint (US)', 'pt', 0.473176473], ['Quart (US)', 'qt', 0.946352946],
+    ['Gallon (US)', 'gal', 3.785411784], ['Fluid Ounce (UK)', 'fl oz UK', 0.0284130625], ['Pint (UK)', 'pt UK', 0.56826125],
+    ['Gallon (UK)', 'gal UK', 4.54609], ['Barrel (Oil)', 'bbl', 158.987294928]]) },
+  { id: 'weight', name: 'Weight', icon: 'weight', def: ['Kilogram', 'Pound'], units: lin([
+    ['Milligram', 'mg', 1e-6], ['Gram', 'g', 1e-3], ['Kilogram', 'kg', 1], ['Metric Ton', 't', 1e3],
+    ['Carat', 'ct', 2e-4], ['Ounce', 'oz', 0.028349523125], ['Troy Ounce', 'oz t', 0.0311034768],
+    ['Pound', 'lb', 0.45359237], ['Stone', 'st', 6.35029318], ['Short Ton (US)', 'ton', 907.18474],
+    ['Long Ton (UK)', 'LT', 1016.0469088]]) }
+];
+CATS.forEach(c => { if (c.id !== 'currency') c.units.sort((a, b) => a.n.localeCompare(b.n)); });
+
+/* ───────────────────────── Storage helpers ───────────────────────── */
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+};
+
+/* ───────────────────────── Currency rates ─────────────────────────
+   Fetched every time the app opens (and hourly while it stays open). The free sources
+   publish new rates once a day; the last good set is kept for offline use. */
+const RATES_TTL = 60 * 60 * 1000;
+const names = (() => { try { return new Intl.DisplayNames(['en'], { type: 'currency' }); } catch { return null; } })();
+let rates = store.get('rates', null);   // { usd: {EUR: 0.92, ...}, updated: ms, fetched: ms }
+
+function applyRates() {
+  const cat = CATS.find(c => c.id === 'currency');
+  if (!rates) { cat.units = []; return; }
+  cat.units = Object.entries(rates.usd)
+    .filter(([code, r]) => /^[A-Z]{3}$/.test(code) && r > 0)
+    .map(([code, r]) => {
+      const n = names ? names.of(code) : code;
+      return { n: n && n !== code ? n : code, c: code, to: v => v / r, from: v => v * r };
+    })
+    .filter(u => u.n !== u.c)                       // drop codes the system doesn't name (crypto etc.)
+    .sort((a, b) => a.n.localeCompare(b.n));
+}
+
+async function fetchRates(force) {
+  if (!force && rates && Date.now() - rates.fetched < RATES_TTL) return false;
+  const sources = [
+    async () => {
+      const j = await (await fetch('https://open.er-api.com/v6/latest/USD', { cache: 'no-store' })).json();
+      if (j.result !== 'success') throw 0;
+      return { usd: j.rates, updated: j.time_last_update_unix * 1000 };
+    },
+    async () => {
+      const j = await (await fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json', { cache: 'no-store' })).json();
+      const usd = {}; for (const [k, v] of Object.entries(j.usd)) usd[k.toUpperCase()] = v;
+      return { usd, updated: Date.parse(j.date + 'T00:00:00Z') };
+    }
+  ];
+  for (const src of sources) {
+    try {
+      const r = await src();
+      rates = { ...r, fetched: Date.now() };
+      store.set('rates', rates);
+      applyRates();
+      return true;
+    } catch {}
+  }
+  return false;
+}
+
+/* ───────────────────────── Formatting ───────────────────────── */
+const nf = new Intl.NumberFormat('en-US', { maximumFractionDigits: 10 });
+function fmtResult(x, currency) {
+  if (!isFinite(x)) return '—';
+  if (x === 0) return '0';
+  const a = Math.abs(x);
+  if (a >= 1e15 || a < 1e-9) return x.toExponential(4).replace('e+', 'e');
+  if (currency) return new Intl.NumberFormat('en-US', a >= 1 ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : { maximumSignificantDigits: 4 }).format(x);
+  return nf.format(Number(x.toPrecision(10)));
+}
+function fmtInput(s) {
+  const neg = s.startsWith('-'); if (neg) s = s.slice(1);
+  const [i, f] = s.split('.');
+  const g = i.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return (neg ? '−' : '') + g + (f !== undefined ? '.' + f : '');
+}
+const fit = (el, s) => { const l = s.length; el.style.fontSize = (l <= 8 ? 32 : l <= 11 ? 27 : l <= 14 ? 22 : 18) + 'px'; };
+
+/* ───────────────────────── Home ───────────────────────── */
+const $ = id => document.getElementById(id);
+$('logo').innerHTML = svg('logo', 22, 1.8) + '<span>CON<b>VERT</b></span>';
+$('grid').innerHTML = CATS.map(c =>
+  `<button class="cat" data-id="${c.id}"><div class="ic">${svg(c.icon)}</div><span>${c.name}</span></button>`).join('');
+$('grid').addEventListener('click', e => { const b = e.target.closest('.cat'); if (b) location.hash = b.dataset.id; });
+
+/* ───────────────────────── Converter ───────────────────────── */
+let cat = null;                    // current category
+const sides = {
+  from: { col: $('colFrom'), idx: 0 },
+  to:   { col: $('colTo'),   idx: 0 }
+};
+let input = '1';
+const rowH = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--row'));
+
+function openCat(id) {
+  cat = CATS.find(c => c.id === id);
+  if (!cat) return showHome();
+  $('home').classList.add('hidden'); $('conv').classList.remove('hidden');
+  $('ctitle').textContent = cat.name;
+  const saved = store.get('cat:' + cat.id, {});
+  input = saved.input || '1';
+  buildColumns(saved);
+  updateSub();
+  if (cat.id === 'currency') fetchRates(false).then(changed => { if (changed && cat && cat.id === 'currency') { buildColumns(store.get('cat:currency', {})); } updateSub(); });
+}
+
+function showHome() {
+  cat = null; closeWheel();
+  $('conv').classList.add('hidden'); $('home').classList.remove('hidden');
+}
+
+function buildColumns(saved) {
+  const units = cat.units;
+  $('empty').classList.toggle('hidden', units.length > 0);
+  $('empty').textContent = units.length ? '' : (navigator.onLine ? 'Loading rates…' : 'Connect to the internet once to load currency rates.');
+  for (const key of ['from', 'to']) {
+    const s = sides[key], list = s.col.querySelector('.list');
+    s.col.style.visibility = units.length ? '' : 'hidden';
+    list.innerHTML = units.map((u, i) => `<div class="item" data-i="${i}"><div class="n">${u.n}</div><div class="c">${u.c}</div></div>`).join('');
+    const want = saved[key] || cat.def[key === 'from' ? 0 : 1];
+    let i = units.findIndex(u => u.n === want || u.c === want);
+    if (i < 0) i = Math.max(0, units.findIndex(u => u.n === cat.def[key === 'from' ? 0 : 1]));
+    s.idx = i;
+  }
+  layout();
+  render();
+}
+
+function layout() {
+  const h = rowH();
+  for (const key of ['from', 'to']) {
+    const s = sides[key], list = s.col.querySelector('.list'), band = s.col.querySelector('.band');
+    const ch = s.col.clientHeight, pad = Math.max(0, (ch - h) / 2);
+    list.style.paddingTop = list.style.paddingBottom = pad + 'px';
+    band.style.top = pad + 'px';
+    list.scrollTop = s.idx * h;
+  }
+}
+
+function value() { const v = parseFloat(input); return isNaN(v) ? 0 : v; }
+
+function render() {
+  if (!cat || !cat.units.length) return;
+  const uf = cat.units[sides.from.idx], ut = cat.units[sides.to.idx];
+  const out = ut.from(uf.to(value()));
+  const vs = { from: fmtInput(input), to: fmtResult(out, cat.id === 'currency') };
+  for (const key of ['from', 'to']) {
+    const u = cat.units[sides[key].idx], band = sides[key].col.querySelector('.band');
+    const v = band.querySelector('.v'); v.textContent = vs[key]; fit(v, vs[key]);
+    band.querySelector('.n').textContent = u.n;
+    band.querySelector('.c').textContent = u.c;
+  }
+}
+
+function save() {
+  if (!cat || !cat.units.length) return;
+  store.set('cat:' + cat.id, { from: cat.units[sides.from.idx][cat.id === 'currency' ? 'c' : 'n'],
+                               to: cat.units[sides.to.idx][cat.id === 'currency' ? 'c' : 'n'], input });
+}
+
+function updateSub() {
+  const el = $('csub');
+  if (!cat || cat.id !== 'currency') { el.textContent = ''; return; }
+  if (!rates) { el.textContent = ''; return; }
+  const d = new Date(rates.updated);
+  el.textContent = 'Rates of ' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) +
+    (Date.now() - rates.fetched > RATES_TTL * 24 ? ' · offline' : '');
+}
+
+/* Scrolling columns: the row under the band is the selected unit. */
+for (const key of ['from', 'to']) {
+  const s = sides[key], list = s.col.querySelector('.list');
+  let t = 0, raf = 0;
+  list.addEventListener('scroll', () => {
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      if (!cat) return;
+      const i = Math.min(cat.units.length - 1, Math.max(0, Math.round(list.scrollTop / rowH())));
+      if (i !== s.idx) { s.idx = i; render(); }
+    });
+    clearTimeout(t); t = setTimeout(save, 200);
+  }, { passive: true });
+  list.addEventListener('click', e => {
+    const it = e.target.closest('.item'); if (!it) return;
+    list.scrollTo({ top: +it.dataset.i * rowH(), behavior: 'smooth' });
+  });
+}
+addEventListener('resize', () => { if (cat) layout(); });
+
+/* ───────────────────────── Keypad ───────────────────────── */
+const BACK = '<svg width="28" height="22" viewBox="0 0 28 22" fill="none" stroke="#fff" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M9 2h15a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H9l-7-9z"/><path d="M13 7.5l7 7M20 7.5l-7 7"/></svg>';
+const SWAP = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h14M14 4l4 4-4 4M20 16H6M10 12l-4 4 4 4"/></svg>';
+const COPY = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>';
+const KEYS = [
+  ['7'], ['8'], ['9'], ['del', BACK, 'op'],
+  ['4'], ['5'], ['6'], ['ac', '<small>AC</small>', 'op'],
+  ['1'], ['2'], ['3'], ['neg', '<small>+/−</small>', 'op'],
+  ['swap', SWAP, 'op'], ['0'], ['.', '.'], ['copy', COPY, 'op']
+];
+$('pad').innerHTML = KEYS.map(([k, label, cls]) => `<button class="key ${cls || ''}" data-k="${k}">${label || k}</button>`).join('');
+
+function press(k) {
+  if (!cat) return;
+  if (/^\d$/.test(k)) {
+    const digits = input.replace(/[-.]/g, '');
+    if (digits.length >= 15) return;
+    input = input === '0' ? k : input === '-0' ? '-' + k : input + k;
+  } else if (k === '.') { if (!input.includes('.')) input += '.'; }
+  else if (k === 'del') { input = input.slice(0, -1); if (input === '' || input === '-') input = '0'; }
+  else if (k === 'ac') input = '0';
+  else if (k === 'neg') input = input.startsWith('-') ? input.slice(1) : '-' + input;
+  else if (k === 'swap') {
+    const a = sides.from.idx; sides.from.idx = sides.to.idx; sides.to.idx = a; layout();
+  } else if (k === 'copy') {
+    const txt = sides.to.col.querySelector('.v').textContent.replace(/,/g, '');
+    navigator.clipboard?.writeText(txt).then(() => toast('Copied ' + txt), () => toast('Copy not available'));
+    return;
+  }
+  render(); save();
+}
+$('pad').addEventListener('click', e => { const b = e.target.closest('.key'); if (b) press(b.dataset.k); });
+addEventListener('keydown', e => {
+  if (!cat) return;
+  const map = { Backspace: 'del', Escape: 'ac', Delete: 'ac', '-': 'neg', ',': '.', '.': '.' };
+  const k = /^\d$/.test(e.key) ? e.key : map[e.key];
+  if (!k) return;
+  e.preventDefault(); press(k);
+  const b = $('pad').querySelector(`[data-k="${CSS.escape(k)}"]`);
+  if (b) { b.classList.add('down'); setTimeout(() => b.classList.remove('down'), 100); }
+});
+
+function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('show'), 1400); }
+
+/* ───────────────────────── Letter wheel ─────────────────────────
+   Tap A–Z on a column, then slide a finger around the ring: the column jumps to the
+   first unit starting with that letter. Lift the finger to close. */
+const ABC = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+let wheelSide = null, wheelLetter = null, wheelTouched = false;
+
+$('cols').addEventListener('click', e => { const b = e.target.closest('.az'); if (b) openWheel(b.dataset.side); });
+
+function openWheel(side) {
+  if (!cat || !cat.units.length) return;
+  wheelSide = side; wheelLetter = null; wheelTouched = false;
+  const w = $('wheel'); w.classList.remove('hidden');
+  w.querySelectorAll('.l').forEach(n => n.remove());
+  const have = new Set(cat.units.map(u => u.n[0].toUpperCase()));
+  const W = w.clientWidth, H = w.clientHeight, r = Math.min(W, H) / 2 - 24;
+  ABC.forEach((ch, i) => {
+    const a = (i / ABC.length) * Math.PI * 2 - Math.PI / 2;
+    const el = document.createElement('div');
+    el.className = 'l' + (have.has(ch) ? '' : ' off'); el.textContent = ch; el.dataset.ch = ch;
+    el.style.left = (W / 2 + r * Math.cos(a)) + 'px'; el.style.top = (H / 2 + r * Math.sin(a)) + 'px';
+    w.appendChild(el);
+  });
+  w._r = r;
+  $('wbig').textContent = cat.units[sides[side].idx].n[0].toUpperCase();
+  $('whint').textContent = 'Slide around the ring';
+}
+
+function closeWheel() { $('wheel').classList.add('hidden'); wheelSide = null; }
+
+function pickAt(x, y) {
+  const w = $('wheel'), rc = w.getBoundingClientRect();
+  const dx = x - rc.left - rc.width / 2, dy = y - rc.top - rc.height / 2;
+  if (Math.hypot(dx, dy) < w._r * 0.4) return;            // dead zone in the middle
+  let a = Math.atan2(dy, dx) + Math.PI / 2; if (a < 0) a += Math.PI * 2;
+  const ch = ABC[Math.round(a / (Math.PI * 2) * ABC.length) % ABC.length];
+  if (ch === wheelLetter) return;
+  wheelLetter = ch; wheelTouched = true;
+  w.querySelectorAll('.l').forEach(n => n.classList.toggle('on', n.dataset.ch === ch));
+  // first unit starting with this letter, or the next letter that has one
+  const units = cat.units;
+  let i = units.findIndex(u => u.n[0].toUpperCase() >= ch);
+  if (i < 0) i = units.length - 1;
+  const s = sides[wheelSide];
+  s.idx = i;
+  s.col.querySelector('.list').scrollTop = i * rowH();
+  $('wbig').textContent = ch;
+  $('whint').textContent = units[i].n;
+  render();
+  if (navigator.vibrate) navigator.vibrate(5);
+}
+
+const wheel = $('wheel');
+wheel.addEventListener('pointerdown', e => { wheel.setPointerCapture(e.pointerId); pickAt(e.clientX, e.clientY); });
+wheel.addEventListener('pointermove', e => { if (e.buttons || e.pointerType === 'touch') pickAt(e.clientX, e.clientY); });
+wheel.addEventListener('pointerup', () => { save(); setTimeout(closeWheel, wheelTouched ? 220 : 0); });
+
+/* ───────────────────────── Routing & lifecycle ───────────────────────── */
+$('back').addEventListener('click', () => { if (location.hash) history.back(); else showHome(); });
+function route() { const id = location.hash.slice(1); id ? openCat(id) : showHome(); }
+addEventListener('hashchange', route);
+
+applyRates();
+route();
+fetchRates(false).then(changed => { if (changed && cat && cat.id === 'currency') buildColumns(store.get('cat:currency', {})); updateSub(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') fetchRates(false).then(changed => { if (changed && cat && cat.id === 'currency') buildColumns(store.get('cat:currency', {})); updateSub(); });
+});
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
