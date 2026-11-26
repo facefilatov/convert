@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Convert">
 <meta name="theme-color" content="#000000">
 <link rel="apple-touch-icon" href="icon-180.png">
@@ -77,7 +77,9 @@
     justify-content: space-between; cursor: pointer;
   }
   .item .n { font-size: 16px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: rgba(255,255,255,.8); }
-  .item .c { font-size: 12px; color: var(--g3); align-self: flex-end; letter-spacing: .4px; }
+  .item .b { display: flex; justify-content: space-between; align-items: center; }
+  .item .f, .band .f { font-size: 17px; line-height: 1; }
+  .item .c { font-size: 12px; color: var(--g3); margin-left: auto; letter-spacing: .4px; }
   .band {
     position: absolute; left: 0; right: 0; height: var(--row); pointer-events: none;
     padding: 8px 14px 10px; display: flex; flex-direction: column; justify-content: space-between;
@@ -265,6 +267,20 @@ const RATES_TTL = 60 * 60 * 1000;
 const names = (() => { try { return new Intl.DisplayNames(['en'], { type: 'currency' }); } catch { return null; } })();
 let rates = store.get('rates', null);   // { usd: {EUR: 0.92, ...}, updated: ms, fetched: ms }
 
+/* Emoji flag for a currency: its first two letters are the ISO country code,
+   except shared and supranational currencies. */
+const FLAG_REGION = { EUR: 'EU', ANG: 'CW', XCG: 'CW', XPF: 'PF', XCD: 'AG' };
+const regionNames = (() => { try { return new Intl.DisplayNames(['en'], { type: 'region' }); } catch { return null; } })();
+function flag(code) {
+  let rg = FLAG_REGION[code];
+  if (!rg) {
+    if (code[0] === 'X') return '🌐';                         // XAF, XOF, XDR …
+    rg = code.slice(0, 2);
+    if (regionNames && regionNames.of(rg) === rg) return '🌐'; // not a real country code
+  }
+  return String.fromCodePoint(...[...rg].map(ch => 0x1F1E6 + ch.charCodeAt(0) - 65));
+}
+
 function applyRates() {
   const cat = CATS.find(c => c.id === 'currency');
   if (!rates) { cat.units = []; return; }
@@ -272,7 +288,7 @@ function applyRates() {
     .filter(([code, r]) => /^[A-Z]{3}$/.test(code) && r > 0)
     .map(([code, r]) => {
       const n = names ? names.of(code) : code;
-      return { n: n && n !== code ? n : code, c: code, to: v => v / r, from: v => v * r };
+      return { n: n && n !== code ? n : code, c: code, f: flag(code), to: v => v / r, from: v => v * r };
     })
     .filter(u => u.n !== u.c)                       // drop codes the system doesn't name (crypto etc.)
     .sort((a, b) => a.n.localeCompare(b.n));
@@ -362,7 +378,7 @@ function buildColumns(saved) {
   for (const key of ['from', 'to']) {
     const s = sides[key], list = s.col.querySelector('.list');
     s.col.style.visibility = units.length ? '' : 'hidden';
-    list.innerHTML = units.map((u, i) => `<div class="item" data-i="${i}"><div class="n">${u.n}</div><div class="c">${u.c}</div></div>`).join('');
+    list.innerHTML = units.map((u, i) => `<div class="item" data-i="${i}"><div class="n">${u.n}</div><div class="b"><span class="f">${u.f || ''}</span><span class="c">${u.c}</span></div></div>`).join('');
     const want = saved[key] || cat.def[key === 'from' ? 0 : 1];
     let i = units.findIndex(u => u.n === want || u.c === want);
     if (i < 0) i = Math.max(0, units.findIndex(u => u.n === cat.def[key === 'from' ? 0 : 1]));
@@ -394,7 +410,7 @@ function render() {
     const u = cat.units[sides[key].idx], band = sides[key].col.querySelector('.band');
     const v = band.querySelector('.v'); v.textContent = vs[key]; fit(v, vs[key]);
     band.querySelector('.n').textContent = u.n;
-    band.querySelector('.c').textContent = u.c;
+    band.querySelector('.c').textContent = (u.f ? u.f + ' ' : '') + u.c;
   }
 }
 
